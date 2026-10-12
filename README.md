@@ -1,3 +1,9 @@
+# ACEest Fitness & Gym - DevOps Assignment
+
+**Name:** Vivek Rajkumar Patil  
+**BITS ID:** 2025TM93007  
+**Course:** Introduction to DevOps - Assignment 1
+
 # ACEest Fitness & Gym — DevOps Assignment 1
 
 A Flask web version of the ACEest Fitness & Gym application used to demonstrate version control, automated testing, Docker containerization, GitHub Actions CI, and Jenkins builds.
