@@ -1,0 +1,22 @@
+ACEest Fitness - Kubernetes Final Deployment
+============================================
+
+1. Deployment status:
+NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+aceest-app   2/2     2            2           7h20m
+
+2. Running pods:
+NAME                          READY   STATUS    RESTARTS        AGE
+aceest-app-79b5f7b878-994gl   1/1     Running   0               4m45s
+aceest-app-79b5f7b878-czxpl   1/1     Running   0               4m14s
+postgres-0                    1/1     Running   1 (5m22s ago)   7h20m
+
+3. Docker Hub image:
+vivekp10061998/aceest-fitness:3.2.4-web-00b883b6
+
+4. Health check:
+{"status":"ready"}
+
+5. Application version:
+{"application":"ACEest Fitness & Gym","variant":"stable","version":"3.2.4-web"}
+
