@@ -1,0 +1,10 @@
+Docker Hub published image verification
+Image: vivekp10061998/aceest-fitness:3.2.4-web-00b883b6
+
+CONTAINER ID   IMAGE                                              COMMAND                  CREATED              STATUS                        PORTS                                         NAMES
+fd0d8b8a41e7   vivekp10061998/aceest-fitness:3.2.4-web-00b883b6   "gunicorn --bind 0.0…"   About a minute ago   Up About a minute (healthy)   0.0.0.0:8002->8000/tcp, [::]:8002->8000/tcp   aceest-hub-debug
+
+{"status":"ready"}
+
+{"application":"ACEest Fitness & Gym","variant":"stable","version":"3.2.4-web"}
+
