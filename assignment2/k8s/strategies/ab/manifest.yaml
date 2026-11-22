@@ -25,7 +25,7 @@ spec:
       containers:
       - name: aceest-web
         image: __IMAGE__
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
         envFrom:
@@ -100,7 +100,7 @@ spec:
       containers:
       - name: aceest-web
         image: __CANDIDATE_IMAGE__
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
         envFrom:

@@ -1,0 +1,6 @@
+Before rollback - Normal:
+{"application":"ACEest Fitness & Gym","variant":"a","version":"3.2.4-web"}
+
+Before rollback - Header B:
+{"application":"ACEest Fitness & Gym","variant":"b","version":"3.2.5-web"}
+

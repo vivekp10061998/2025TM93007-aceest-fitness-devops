@@ -1,0 +1,14 @@
+NAME                         READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES                     SELECTOR
+deployment.apps/aceest-app   2/2     2            2           56m   aceest-web   aceest-fitness:3.2.4-web   app=aceest-web,variant=stable
+
+NAME                              READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE   READINESS GATES
+pod/aceest-app-5b78d8985d-df8qn   1/1     Running   0          42m   10.244.0.8   minikube   <none>           <none>
+pod/aceest-app-5b78d8985d-zv5zz   1/1     Running   0          42m   10.244.0.9   minikube   <none>           <none>
+pod/postgres-0                    1/1     Running   0          56m   10.244.0.3   minikube   <none>           <none>
+
+NAME                     TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE   SELECTOR
+service/aceest-service   ClusterIP   10.99.241.155   <none>        80/TCP     56m   app=aceest-web,variant=stable
+service/postgres         ClusterIP   None            <none>        5432/TCP   56m   app=aceest-postgres
+
+NAME                                       CLASS   HOSTS                 ADDRESS   PORTS   AGE
+ingress.networking.k8s.io/aceest-primary   nginx   rolling.aceest.test             80      56m

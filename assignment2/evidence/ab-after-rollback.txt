@@ -1,0 +1,5 @@
+After A/B rollback:
+NAME             CLASS   HOSTS            ADDRESS        PORTS   AGE
+aceest-primary   nginx   ab.aceest.test   192.168.49.2   80      5m53s
+{"application":"ACEest Fitness & Gym","variant":"a","version":"3.2.4-web"}
+
