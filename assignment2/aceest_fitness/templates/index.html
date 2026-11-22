@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ACEest Fitness & Gym</title>
+  <style>
+    :root {font-family:system-ui,sans-serif;color:#172331;background:#f3f6fa}
+    body {max-width:1000px;margin:0 auto;padding:2rem 1.2rem}
+    header {background:#142a40;color:white;padding:2.5rem;border-radius:18px}
+    header h1 {margin:0 0 .4rem;font-size:2.1rem}header p{color:#c6e0ed;margin:0}
+    main{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem}
+    section{background:white;border-radius:14px;padding:1.3rem;box-shadow:0 3px 16px #18283d12}
+    h2{margin-top:0;font-size:1.15rem}input,select,button{font:inherit;width:100%;box-sizing:border-box;padding:.65rem;border:1px solid #c7d4e0;border-radius:8px;margin:.35rem 0}
+    button{background:#16795c;color:#fff;font-weight:650;cursor:pointer;border:0}
+    .pill{display:inline-block;background:#d9f0e8;color:#135740;padding:.25rem .7rem;border-radius:999px;font-size:.78rem}
+    li{padding:.35rem 0}small{color:#64748b}#message{min-height:1.4rem}
+    @media(max-width:680px){main{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <header><span class="pill">Deployed application • {{ version }}</span><h1>ACEest Fitness & Gym</h1><p>Member management, training programs and progress tracking.</p></header>
+  <main>
+    <section><h2>Register a member</h2>
+      <form id="memberForm">
+        <input id="name" required maxlength="100" minlength="2" placeholder="Full name">
+        <input id="email" required type="email" placeholder="Email address">
+        <input id="age" required type="number" min="12" max="100" placeholder="Age">
+        <input id="weight" required type="number" min="20" max="400" step="0.1" placeholder="Weight (kg)">
+        <select id="program" required><option value="fat-loss">Fat Loss</option><option value="muscle-gain">Muscle Gain</option><option value="endurance">Endurance</option></select>
+        <button type="submit">Register member</button>
+      </form><p id="message" role="status"></p>
+    </section>
+    <section><h2>Current members <small id="count"></small></h2><ul id="members"></ul><h2>Fitness programs</h2><ul id="programs"></ul></section>
+  </main>
+  <script>
+    async function refresh(){
+      const [memberResponse,programResponse]=await Promise.all([fetch('/api/members'),fetch('/api/programs')]);
+      const members=await memberResponse.json(),programs=await programResponse.json();
+      document.querySelector('#count').textContent=`(${members.count})`;
+      const list=document.querySelector('#members');list.replaceChildren();
+      members.members.forEach(member=>{const li=document.createElement('li');li.textContent=`${member.name} — ${member.program}`;list.append(li)});
+      const plans=document.querySelector('#programs');plans.replaceChildren();
+      programs.programs.forEach(plan=>{const li=document.createElement('li');li.textContent=plan.name;plans.append(li)});
+    }
+    document.querySelector('#memberForm').addEventListener('submit',async e=>{
+      e.preventDefault();
+      const member={name:document.querySelector('#name').value,email:document.querySelector('#email').value,age:Number(document.querySelector('#age').value),weight_kg:Number(document.querySelector('#weight').value),program:document.querySelector('#program').value};
+      const response=await fetch('/api/members',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(member)});
+      const result=await response.json();
+      document.querySelector('#message').textContent=response.ok?'Member registered successfully.':result.error;
+      if(response.ok){e.target.reset();await refresh()}
+    });
+    refresh().catch(()=>{document.querySelector('#message').textContent='Unable to load member data.'});
+  </script>
+</body>
+</html>

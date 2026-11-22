@@ -1,0 +1,179 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-blue
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aceest-web
+      variant: blue
+  template:
+    metadata:
+      labels:
+        app: aceest-web
+        variant: blue
+    spec:
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      containers:
+      - name: aceest-web
+        image: __IMAGE__
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: aceest-settings
+        env:
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: aceest-db-secret
+              key: DB_PASSWORD
+        - name: APP_VARIANT
+          value: blue
+        - name: SHADOW_MODE
+          value: 'false'
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          periodSeconds: 5
+          initialDelaySeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          periodSeconds: 10
+          initialDelaySeconds: 10
+        startupProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          failureThreshold: 30
+          periodSeconds: 5
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sh
+              - -c
+              - sleep 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            memory: 384Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-green
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aceest-web
+      variant: green
+  template:
+    metadata:
+      labels:
+        app: aceest-web
+        variant: green
+    spec:
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      containers:
+      - name: aceest-web
+        image: __CANDIDATE_IMAGE__
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: aceest-settings
+        env:
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: aceest-db-secret
+              key: DB_PASSWORD
+        - name: APP_VARIANT
+          value: green
+        - name: SHADOW_MODE
+          value: 'false'
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          periodSeconds: 5
+          initialDelaySeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          periodSeconds: 10
+          initialDelaySeconds: 10
+        startupProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          failureThreshold: 30
+          periodSeconds: 5
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sh
+              - -c
+              - sleep 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            memory: 384Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-service
+spec:
+  selector:
+    app: aceest-web
+    variant: blue
+  ports:
+  - port: 80
+    targetPort: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-primary
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: bluegreen.aceest.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aceest-service
+            port:
+              number: 80

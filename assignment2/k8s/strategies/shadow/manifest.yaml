@@ -1,0 +1,194 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-stable
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aceest-web
+      variant: stable
+  template:
+    metadata:
+      labels:
+        app: aceest-web
+        variant: stable
+    spec:
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      containers:
+      - name: aceest-web
+        image: __IMAGE__
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: aceest-settings
+        env:
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: aceest-db-secret
+              key: DB_PASSWORD
+        - name: APP_VARIANT
+          value: stable
+        - name: SHADOW_MODE
+          value: 'false'
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          periodSeconds: 5
+          initialDelaySeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          periodSeconds: 10
+          initialDelaySeconds: 10
+        startupProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          failureThreshold: 30
+          periodSeconds: 5
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sh
+              - -c
+              - sleep 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            memory: 384Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-shadow
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aceest-web
+      variant: shadow
+  template:
+    metadata:
+      labels:
+        app: aceest-web
+        variant: shadow
+    spec:
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      containers:
+      - name: aceest-web
+        image: __CANDIDATE_IMAGE__
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: aceest-settings
+        env:
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: aceest-db-secret
+              key: DB_PASSWORD
+        - name: APP_VARIANT
+          value: shadow
+        - name: SHADOW_MODE
+          value: 'true'
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          periodSeconds: 5
+          initialDelaySeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          periodSeconds: 10
+          initialDelaySeconds: 10
+        startupProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          failureThreshold: 30
+          periodSeconds: 5
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sh
+              - -c
+              - sleep 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            memory: 384Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-service
+spec:
+  selector:
+    app: aceest-web
+    variant: stable
+  ports:
+  - port: 80
+    targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-shadow
+spec:
+  selector:
+    app: aceest-web
+    variant: shadow
+  ports:
+  - port: 80
+    targetPort: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-primary
+  annotations:
+    nginx.ingress.kubernetes.io/mirror-target: http://aceest-shadow.aceest-shadow.svc.cluster.local$request_uri
+    nginx.ingress.kubernetes.io/mirror-request-body: 'off'
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: shadow.aceest.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aceest-service
+            port:
+              number: 80

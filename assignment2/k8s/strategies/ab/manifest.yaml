@@ -1,0 +1,214 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-stable
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aceest-web
+      variant: a
+  template:
+    metadata:
+      labels:
+        app: aceest-web
+        variant: a
+    spec:
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      containers:
+      - name: aceest-web
+        image: __IMAGE__
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: aceest-settings
+        env:
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: aceest-db-secret
+              key: DB_PASSWORD
+        - name: APP_VARIANT
+          value: a
+        - name: SHADOW_MODE
+          value: 'false'
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          periodSeconds: 5
+          initialDelaySeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          periodSeconds: 10
+          initialDelaySeconds: 10
+        startupProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          failureThreshold: 30
+          periodSeconds: 5
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sh
+              - -c
+              - sleep 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            memory: 384Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-variant-b
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aceest-web
+      variant: b
+  template:
+    metadata:
+      labels:
+        app: aceest-web
+        variant: b
+    spec:
+      terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
+      containers:
+      - name: aceest-web
+        image: __CANDIDATE_IMAGE__
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: aceest-settings
+        env:
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: aceest-db-secret
+              key: DB_PASSWORD
+        - name: APP_VARIANT
+          value: b
+        - name: SHADOW_MODE
+          value: 'false'
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          periodSeconds: 5
+          initialDelaySeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          periodSeconds: 10
+          initialDelaySeconds: 10
+        startupProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          failureThreshold: 30
+          periodSeconds: 5
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sh
+              - -c
+              - sleep 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 100Mi
+          limits:
+            memory: 384Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-service
+spec:
+  selector:
+    app: aceest-web
+    variant: a
+  ports:
+  - port: 80
+    targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-variant-b
+spec:
+  selector:
+    app: aceest-web
+    variant: b
+  ports:
+  - port: 80
+    targetPort: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-primary
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: ab.aceest.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aceest-service
+            port:
+              number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-variant-b
+  annotations:
+    nginx.ingress.kubernetes.io/canary: 'true'
+    nginx.ingress.kubernetes.io/canary-by-header: X-ACEest-Variant
+    nginx.ingress.kubernetes.io/canary-by-header-value: B
+    nginx.ingress.kubernetes.io/canary-weight: '0'
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: ab.aceest.test
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aceest-variant-b
+            port:
+              number: 80

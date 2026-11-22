@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: aceest
+      POSTGRES_USER: aceest
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aceest -d aceest"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - aceest-data:/var/lib/postgresql/data
+  web:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: postgres
+      DB_USER: aceest
+      DB_NAME: aceest
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  aceest-data:
