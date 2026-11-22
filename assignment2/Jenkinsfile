@@ -1,116 +1,232 @@
 pipeline {
     agent any
+
     options {
         timestamps()
         disableConcurrentBuilds()
+        skipDefaultCheckout(true)
         buildDiscarder(logRotator(numToKeepStr: '15'))
     }
-    triggers { pollSCM('H/5 * * * *') }
-    parameters {
-        string(name: 'DOCKERHUB_REPOSITORY', defaultValue: 'YOUR_DOCKERHUB_USERNAME/aceest-fitness', description: 'Public Docker Hub repository')
-        booleanParam(name: 'DEPLOY_TO_MINIKUBE', defaultValue: false, description: 'Deploy rolling update when Jenkins can access Kubernetes')
+
+    triggers {
+        pollSCM('H/5 * * * *')
     }
+
+    parameters {
+        string(
+            name: 'DOCKERHUB_REPOSITORY',
+            defaultValue: 'aceest-fitness',
+            description: 'Docker image name. Use username/aceest-fitness when publishing.'
+        )
+        booleanParam(
+            name: 'PUSH_TO_DOCKERHUB',
+            defaultValue: false,
+            description: 'Publish image to Docker Hub'
+        )
+        booleanParam(
+            name: 'DEPLOY_TO_MINIKUBE',
+            defaultValue: false,
+            description: 'Deploy after publishing'
+        )
+    }
+
     environment {
-        SONARQUBE_SERVER = 'SonarQube'
         TEST_IMAGE = 'aceest-fitness-ci-test'
-        VERSION = '3.2.4-web'
         DEPLOY_ATTEMPTED = 'false'
     }
+
     stages {
         stage('Checkout') {
-            steps { checkout scm }
+            steps {
+                checkout scm
+            }
         }
+
         stage('Prepare metadata') {
             steps {
                 script {
-                    env.SHORT_SHA = sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()
-                    env.VERSION = readFile('VERSION').trim()
+                    env.SHORT_SHA = sh(
+                        script: 'git rev-parse --short=8 HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    env.VERSION = readFile('assignment2/VERSION').trim()
+
                     env.RELEASE_IMAGE = "${params.DOCKERHUB_REPOSITORY}:${env.VERSION}-${env.SHORT_SHA}"
                 }
+
                 echo "Building ${env.RELEASE_IMAGE}"
             }
         }
+
         stage('Containerized Pytest + Coverage') {
             steps {
-                sh '''
-                  mkdir -p reports
-                  docker build --target test -t "${TEST_IMAGE}:${BUILD_NUMBER}" .
-                  docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
-                    -v "$PWD:/app" -w /app "${TEST_IMAGE}:${BUILD_NUMBER}" \
-                    python scripts/validate_project.py
-                  docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
-                    -v "$PWD:/app" -w /app "${TEST_IMAGE}:${BUILD_NUMBER}" \
-                    python -m pytest -q tests --junitxml=reports/junit.xml \
-                    --cov=aceest_fitness --cov-report=xml:coverage.xml
-                '''
+                dir('assignment2') {
+                    sh '''
+                        set -eu
+                        mkdir -p reports
+
+                        docker build --target test \
+                          -t "${TEST_IMAGE}:${BUILD_NUMBER}" .
+
+                        docker run --rm \
+                          --user "$(id -u):$(id -g)" \
+                          -e HOME=/tmp \
+                          -v "$PWD:/app" -w /app \
+                          "${TEST_IMAGE}:${BUILD_NUMBER}" \
+                          python scripts/validate_project.py
+
+                        docker run --rm \
+                          --user "$(id -u):$(id -g)" \
+                          -e HOME=/tmp \
+                          -v "$PWD:/app" -w /app \
+                          "${TEST_IMAGE}:${BUILD_NUMBER}" \
+                          python -m pytest -q tests \
+                          --junitxml=reports/junit.xml \
+                          --cov=aceest_fitness \
+                          --cov-report=xml:coverage.xml
+                    '''
+                }
             }
+
             post {
-                always { junit allowEmptyResults: true, testResults: 'reports/junit.xml' }
-            }
-        }
-        stage('SonarQube static analysis') {
-            steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh 'sonar-scanner'
+                always {
+                    junit allowEmptyResults: true,
+                          testResults: 'assignment2/reports/junit.xml'
                 }
             }
         }
-        stage('SonarQube Quality Gate') {
+
+        stage('SonarQube Analysis + Quality Gate') {
             steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
-        stage('Build runtime image') {
-            steps {
-                sh '''
-                  docker build --target runtime --build-arg APP_VERSION="${VERSION}" \
-                    -t "${RELEASE_IMAGE}" .
-                '''
-            }
-        }
-        stage('Push image') {
-            when { branch 'main' }
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DH_USER', passwordVariable: 'DH_TOKEN')]) {
-                    sh '''
-                      echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
-                      docker push "${RELEASE_IMAGE}"
-                      docker logout
-                    '''
-                }
-            }
-        }
-        stage('Rolling deployment') {
-            when {
-                allOf { branch 'main'; expression { return params.DEPLOY_TO_MINIKUBE } }
-            }
-            steps {
-                script { env.DEPLOY_ATTEMPTED = 'true' }
-                withCredentials([
-                    file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG'),
-                    string(credentialsId: 'aceest-db-password', variable: 'DB_PASSWORD')
-                ]) {
-                    sh '''
-                      chmod +x scripts/apply-strategy.sh
-                      scripts/apply-strategy.sh rolling "${RELEASE_IMAGE}"
-                      kubectl -n aceest-rolling rollout status deployment/aceest-app --timeout=180s
-                    '''
-                }
-            }
-        }
-    }
-    post {
-        failure {
-            script {
-                if (env.DEPLOY_ATTEMPTED == 'true' && env.BRANCH_NAME == 'main') {
-                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                        sh 'kubectl -n aceest-rolling rollout undo deployment/aceest-app || true'
+                dir('assignment2') {
+                    withCredentials([
+                        string(
+                            credentialsId: 'sonarqube-token',
+                            variable: 'SONAR_LOGIN'
+                        )
+                    ]) {
+                        sh '''
+                            set -eu
+
+                            docker run --rm --network host \
+                              --user "$(id -u):$(id -g)" \
+                              -e HOME=/tmp \
+                              -e SONAR_USER_HOME=/tmp/.sonar \
+                              -e SONAR_HOST_URL=http://127.0.0.1:9000 \
+                              -e SONAR_LOGIN \
+                              -v "$PWD:/app" -w /app \
+                              sonarsource/sonar-scanner-cli:5.0.1 \
+                              -Dsonar.python.version=3.10 \
+                              -Dsonar.qualitygate.wait=true
+                        '''
                     }
                 }
             }
         }
-        always { archiveArtifacts artifacts: 'coverage.xml,reports/*.xml', allowEmptyArchive: true }
+
+        stage('Build runtime image') {
+            steps {
+                dir('assignment2') {
+                    sh '''
+                        set -eu
+                        docker build --target runtime \
+                          --build-arg APP_VERSION="${VERSION}" \
+                          -t "${RELEASE_IMAGE}" .
+                    '''
+                }
+            }
+        }
+
+        stage('Push image to Docker Hub') {
+            when {
+                expression {
+                    return params.PUSH_TO_DOCKERHUB
+                }
+            }
+
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DH_USER',
+                        passwordVariable: 'DH_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set -eu
+                        echo "$DH_TOKEN" | docker login \
+                          -u "$DH_USER" --password-stdin
+
+                        docker push "${RELEASE_IMAGE}"
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Rolling deployment') {
+            when {
+                expression {
+                    return params.PUSH_TO_DOCKERHUB &&
+                           params.DEPLOY_TO_MINIKUBE
+                }
+            }
+
+            steps {
+                script {
+                    env.DEPLOY_ATTEMPTED = 'true'
+                }
+
+                dir('assignment2') {
+                    withCredentials([
+                        file(
+                            credentialsId: 'kubeconfig',
+                            variable: 'KUBECONFIG'
+                        ),
+                        string(
+                            credentialsId: 'aceest-db-password',
+                            variable: 'DB_PASSWORD'
+                        )
+                    ]) {
+                        sh '''
+                            set -eu
+                            bash scripts/apply-strategy.sh rolling \
+                              "${RELEASE_IMAGE}"
+
+                            kubectl -n aceest-rolling rollout status \
+                              deployment/aceest-app --timeout=180s
+                        '''
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                if (env.DEPLOY_ATTEMPTED == 'true') {
+                    withCredentials([
+                        file(
+                            credentialsId: 'kubeconfig',
+                            variable: 'KUBECONFIG'
+                        )
+                    ]) {
+                        sh '''
+                            kubectl -n aceest-rolling rollout undo \
+                              deployment/aceest-app || true
+                        '''
+                    }
+                }
+            }
+        }
+
+        always {
+            archiveArtifacts(
+                artifacts: 'assignment2/coverage.xml,assignment2/reports/*.xml',
+                allowEmptyArchive: true
+            )
+        }
     }
 }
