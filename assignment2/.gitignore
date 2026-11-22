@@ -11,3 +11,5 @@ reports/
 .idea/
 .vscode/
 *.log
+
+.scannerwork/
